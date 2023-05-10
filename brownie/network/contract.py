@@ -87,7 +87,6 @@ _explorer_tokens = {
 
 
 class _ContractBase:
-
     _dir_color = "bright magenta"
 
     def __init__(self, project: Any, build: Dict, sources: Dict) -> None:
@@ -504,7 +503,6 @@ class ContractContainer(_ContractBase):
 
 
 class ContractConstructor:
-
     _dir_color = "bright magenta"
 
     def __init__(self, parent: "ContractContainer", name: str) -> None:
@@ -700,12 +698,18 @@ class _DeployedContractBase(_ContractBase):
     _initialized = False
 
     def __init__(
-        self, address: str, owner: Optional[AccountsType] = None, tx: TransactionReceiptType = None
+        self,
+        address: str,
+        owner: Optional[AccountsType] = None,
+        tx: TransactionReceiptType = None,
+        get_bytecode: bool = True,
     ) -> None:
         address = _resolve_address(address)
-        self.bytecode = web3.eth.get_code(address).hex()[2:]
-        if not self.bytecode:
-            raise ContractNotFound(f"No contract deployed at {address}")
+        self.get_bytecode = get_bytecode
+        if self.get_bytecode:
+            self.bytecode = web3.eth.get_code(address).hex()[2:]
+            if not self.bytecode:
+                raise ContractNotFound(f"No contract deployed at {address}")
         self._owner = owner
         self.tx = tx
         self.address = address
@@ -765,7 +769,15 @@ class _DeployedContractBase(_ContractBase):
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, _DeployedContractBase):
-            return self.address == other.address and self.bytecode == other.bytecode
+            if self.get_bytecode and other.get_bytecode:
+                return self.address == other.address and self.bytecode == other.bytecode
+            else:
+                warnings.warn(
+                    "get_bytecode is false for at least one of _DeployedContractBase object. "
+                    "Comparison may be compromised.",
+                    RuntimeWarning,
+                )
+                return self.address == other.address
         if isinstance(other, str):
             try:
                 address = _resolve_address(other)
@@ -848,7 +860,12 @@ class Contract(_DeployedContractBase):
     """
 
     def __init__(
-        self, address_or_alias: str, *args: Any, owner: Optional[AccountsType] = None, **kwargs: Any
+        self,
+        address_or_alias: str,
+        *args: Any,
+        owner: Optional[AccountsType] = None,
+        get_bytecode: bool = True,
+        **kwargs: Any,
     ) -> None:
         """
         Recreate a `Contract` object from the local database.
@@ -900,7 +917,7 @@ class Contract(_DeployedContractBase):
             address = contract.address
 
         _ContractBase.__init__(self, None, build, sources)
-        _DeployedContractBase.__init__(self, address, owner)
+        _DeployedContractBase.__init__(self, address, owner, get_bytecode=get_bytecode)
 
     def _deprecated_init(
         self,
@@ -945,6 +962,7 @@ class Contract(_DeployedContractBase):
         abi: List,
         owner: Optional[AccountsType] = None,
         persist: bool = True,
+        get_bytecode: bool = True,
     ) -> "Contract":
         """
         Create a new `Contract` object from an ABI.
@@ -966,7 +984,7 @@ class Contract(_DeployedContractBase):
 
         self = cls.__new__(cls)
         _ContractBase.__init__(self, None, build, {})  # type: ignore
-        _DeployedContractBase.__init__(self, address, owner, None)
+        _DeployedContractBase.__init__(self, address, owner, None, get_bytecode=get_bytecode)
         if persist:
             _add_deployment(self)
         return self
@@ -979,6 +997,7 @@ class Contract(_DeployedContractBase):
         address: Optional[str] = None,
         owner: Optional[AccountsType] = None,
         persist: bool = True,
+        get_bytecode: bool = True,
     ) -> "Contract":
         """
         Create a new `Contract` object from an ethPM manifest.
@@ -1024,7 +1043,7 @@ class Contract(_DeployedContractBase):
 
         self = cls.__new__(cls)
         _ContractBase.__init__(self, None, build, manifest["sources"])  # type: ignore
-        _DeployedContractBase.__init__(self, address, owner)
+        _DeployedContractBase.__init__(self, address, owner, get_bytecode=get_bytecode)
         if persist:
             _add_deployment(self)
         return self
@@ -1037,6 +1056,7 @@ class Contract(_DeployedContractBase):
         owner: Optional[AccountsType] = None,
         silent: bool = False,
         persist: bool = True,
+        get_bytecode: bool = True,
     ) -> "Contract":
         """
         Create a new `Contract` object with source code queried from a block explorer.
@@ -1206,7 +1226,7 @@ class Contract(_DeployedContractBase):
 
         self = cls.__new__(cls)
         _ContractBase.__init__(self, None, build_json, sources)  # type: ignore
-        _DeployedContractBase.__init__(self, address, owner)
+        _DeployedContractBase.__init__(self, address, owner, get_bytecode=get_bytecode)
         if persist:
             _add_deployment(self)
         return self
@@ -1616,7 +1636,6 @@ class OverloadedMethod:
 
 
 class _ContractMethod:
-
     _dir_color = "bright magenta"
 
     def __init__(
@@ -1964,7 +1983,6 @@ def _get_tx(owner: Optional[AccountsType], args: Tuple) -> Tuple:
 def _get_method_object(
     address: str, abi: Dict, name: str, owner: Optional[AccountsType], natspec: Dict
 ) -> Union["ContractCall", "ContractTx"]:
-
     if "constant" in abi:
         constant = abi["constant"]
     else:
