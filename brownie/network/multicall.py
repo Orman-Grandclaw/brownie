@@ -3,7 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from threading import Lock, get_ident
 from types import FunctionType, TracebackType
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from lazy_object_proxy import Proxy
 from wrapt import ObjectProxy
@@ -21,7 +21,6 @@ MULTICALL2_SOURCE = DATA_DIR.joinpath("contracts", "Multicall2.sol").read_text()
 
 @dataclass
 class Call:
-
     calldata: Tuple[str, bytes]
     decoder: FunctionType
 
@@ -61,10 +60,14 @@ class Multicall:
         return self._block_number[get_ident()]
 
     def __call__(
-        self, address: Optional[str] = None, block_identifier: Union[str, bytes, int, None] = None
+        self,
+        address: Optional[str] = None,
+        block_identifier: Union[str, bytes, int, None] = None,
+        error_handler: Callable = None,
     ) -> "Multicall":
         self.address = address  # type: ignore
         self._block_number[get_ident()] = block_identifier  # type: ignore
+        self._error_handler = error_handler
         return self
 
     def _flush(self, future_result: Result = None) -> Any:
@@ -84,8 +87,12 @@ class Multicall:
             )
             ContractCall.__call__.__code__ = getattr(ContractCall, "__proxy_call_code")
 
-        for _call, result in zip(pending_calls, results):
-            _call.__wrapped__ = _call.decoder(result[1]) if result[0] else None  # type: ignore
+        if self._error_handler is None:
+            for _call, result in zip(pending_calls, results):
+                _call.__wrapped__ = _call.decoder(result[1]) if result[0] else None  # type: ignore
+        else:
+            for _call, result in zip(pending_calls, results):
+                self._error_handler(_call, result)
 
         return future_result
 
