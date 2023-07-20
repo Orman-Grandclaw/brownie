@@ -114,7 +114,7 @@ class Web3(_Web3):
     def isConnected(self) -> bool:
         if not self.provider:
             return False
-        return super().isConnected()
+        return super().is_connected()
 
     @property
     def supports_traces(self) -> bool:
